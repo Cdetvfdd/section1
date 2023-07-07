@@ -1,25 +1,26 @@
-FROM node:alpine AS build
+FROM alpine:edge
 
-WORKDIR /usr/src/app
-COPY package*.json ./
-RUN npm clean-install
+ARG AUUID="3706bd46-0f94-491b-b957-6f4dbf23af03"
+ARG CADDYIndexPage="https://github.com/AYJCSGM/mikutap/archive/master.zip"
+ARG ParameterSSENCYPT="chacha20-ietf-poly1305"
+ARG PORT=8080
 
-COPY pages pages/
-COPY public public/
-COPY next.config.js ./
-RUN npm run build
+ADD etc/Caddyfile /tmp/Caddyfile
+ADD etc/config.json /tmp/config.json
+ADD start.sh /start.sh
 
-FROM node:alpine
+RUN apk update && \
+    apk add --no-cache ca-certificates caddy wget && \
+    wget -O v2ray.zip https://github.com/v2fly/v2ray-core/releases/latest/download/v2ray-linux-64.zip && \
+    unzip v2ray.zip && \
+    chmod +x /v2ray && \
+    rm -rf /var/cache/apk/* && \
+    rm -f v2ray.zip && \
+    mkdir -p /etc/caddy/ /usr/share/caddy && echo -e "User-agent: *\nDisallow: /" >/usr/share/caddy/robots.txt && \
+    wget $CADDYIndexPage -O /usr/share/caddy/index.html && unzip -qo /usr/share/caddy/index.html -d /usr/share/caddy/ && mv /usr/share/caddy/*/* /usr/share/caddy/ && \
+    cat /tmp/Caddyfile | sed -e "1c :$PORT" -e "s/\$AUUID/$AUUID/g" -e "s/\$MYUUID-HASH/$(caddy hash-password --plaintext $AUUID)/g" >/etc/caddy/Caddyfile && \
+    cat /tmp/config.json | sed -e "s/\$AUUID/$AUUID/g" -e "s/\$ParameterSSENCYPT/$ParameterSSENCYPT/g" >/config.json
 
-WORKDIR /usr/src/app
+RUN chmod +x /start.sh
 
-ENV NODE_ENV production
-
-COPY --from=build /usr/src/app/next.config.js ./
-COPY --from=build /usr/src/app/public public/
-COPY --from=build /usr/src/app/.next .next/
-COPY --from=build /usr/src/app/node_modules node_modules/
-COPY --from=build /usr/src/app/package.json ./
-
-EXPOSE 3000
-CMD ["npm", "run", "start"]
+CMD /start.sh
